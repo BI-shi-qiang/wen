@@ -160,6 +160,7 @@ import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
+import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js'  // 加这个
 
 const candleOut = ref(false)
 const btnText = ref('吹蜡烛')
@@ -573,12 +574,12 @@ onMounted(() => {
   // 移动端优化渲染，防止崩溃/不显示
   renderer = new THREE.WebGLRenderer({
     canvas: cakeCanvas.value,
-    antialias: !isMobile,
+    antialias: false,
     alpha: true,
     powerPreference: "high-performance"
   })
   renderer.setSize(400, 400)
-  renderer.setPixelRatio(isMobile ? 1 : Math.min(window.devicePixelRatio, 1.5))
+  renderer.setPixelRatio(isMobile ? 1 : Math.min(window.devicePixelRatio, 1.2))
   renderer.outputColorSpace = THREE.SRGBColorSpace
 
   const ambientLight = new THREE.AmbientLight(0xffffff, 1.8)
@@ -597,62 +598,63 @@ onMounted(() => {
   controls.maxDistance = 6
   controls.enablePan = false
 
+  // ------------- 修复 DRACO + GitHub Pages 路径 -------------
+  const dracoLoader = new DRACOLoader()
+  dracoLoader.setDecoderPath('/draco/')
   const loader = new GLTFLoader()
+  loader.setDRACOLoader(dracoLoader)
+  
   loader.load(
-    '/cake.glb',
-    (gltf) => {
-      cakeModel = gltf.scene
+  '/cake.glb', // 👈 绝对关键！必须去掉 / ！！！
+  (gltf) => {
+    cakeModel = gltf.scene
 
-      cakeModel.traverse(child => {
-        if (child.isMesh && child.material) {
-          child.material.needsUpdate = true
-          child.material.emissive = new THREE.Color(0x222222)
-          child.material.emissiveIntensity = 0.4
-          child.material.metalness = 0.1
-        }
-      })
+    cakeModel.traverse(child => {
+      if (child.isMesh && child.material) {
+        child.material.needsUpdate = true
+        child.material.emissive = new THREE.Color(0x222222)
+        child.material.emissiveIntensity = 0.4
+        child.material.metalness = 0.1
+      }
+    })
 
-      const box = new THREE.Box3().setFromObject(cakeModel)
-      const center = box.getCenter(new THREE.Vector3())
-      const size = box.getSize(new THREE.Vector3())
-      const maxDim = Math.max(size.x, size.y, size.z)
-      const scale = 3 / maxDim
+    const box = new THREE.Box3().setFromObject(cakeModel)
+    const center = box.getCenter(new THREE.Vector3())
+    const size = box.getSize(new THREE.Vector3())
+    const maxDim = Math.max(size.x, size.y, size.z)
+    const scale = 3 / maxDim
 
-      // 旋转轴心（你现在的设置，不动！）
-      const pivot = new THREE.Group()
-      scene.add(pivot)
-      pivot.add(cakeModel)
+    const pivot = new THREE.Group()
+    scene.add(pivot)
+    pivot.add(cakeModel)
 
-      cakeModel.scale.setScalar(scale)
-      cakeModel.position.sub(center)
-      cakeModel.position.x = 0.23
-      cakeModel.position.y = -1
-      cakeModel.position.z = 0
-      cakeModel = pivot
-    },
-    (progress) => {
-      // 加载中（防止手机卡死）
-    },
-    (err) => {
-      console.error('模型加载失败，自动创建备用蛋糕', err)
-      // 🔥 手机加载失败时，自动生成一个蛋糕，绝不空白！
-      const geo = new THREE.CylinderGeometry(0.8, 0.8, 1.2, 16)
-      const mat = new THREE.MeshStandardMaterial({ color: 0xff99cc })
-      const fallback = new THREE.Mesh(geo, mat)
-      fallback.position.y = -0.5
+    cakeModel.scale.setScalar(scale)
+    cakeModel.position.sub(center)
+    cakeModel.position.x = 0.23
+    cakeModel.position.y = -1
+    cakeModel.position.z = 0
+    cakeModel = pivot
+  },
+  (progress) => {},
+  (err) => {
+    console.error('模型加载失败，自动创建备用蛋糕', err)
+    const geo = new THREE.CylinderGeometry(0.8, 0.8, 1.2, 16)
+    const mat = new THREE.MeshStandardMaterial({ color: 0xff99cc })
+    const fallback = new THREE.Mesh(geo, mat)
+    fallback.position.y = -0.5
 
-      const pivot = new THREE.Group()
-      scene.add(pivot)
-      pivot.add(fallback)
-      cakeModel = pivot
-    }
+    const pivot = new THREE.Group()
+    scene.add(pivot)
+    pivot.add(fallback)
+    cakeModel = pivot
+  }
   )
 
   // 手机防黑屏：延迟启动渲染
   setTimeout(() => {
     const animate = () => {
       requestAnimationFrame(animate)
-      if (cakeModel) cakeModel.rotation.y += 0.002
+      if (cakeModel) cakeModel.rotation.y += 0.001
       controls.update()
       renderer.render(scene, camera)
     }
