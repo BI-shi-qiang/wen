@@ -178,30 +178,33 @@ import { ref, reactive, onMounted, onUnmounted } from "vue";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
-import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js"; // 加这个
+import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
 import screenfull from "screenfull";
+
+// ======================================
+// 🔥 移动端全局开关：自动优化性能
+// ======================================
+const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+const MOBILE_PERF = isMobile; // 手机自动开性能模式
 
 const candleOut = ref(false);
 const btnText = ref("吹蜡烛");
 const showBlessing = ref(false);
-
 const showLottery = ref(false);
 const showCards = ref(false);
 
-// 抽奖核心变量
-const remainingTimes = ref(2); // 2次机会
-const isRunning = ref(false); // 是否正在转动
-const currentIndex = ref(-1); // 当前亮灯索引
-const winIndex = ref(-1); // 中奖索引
-let rotateTimer = null; // 转动定时器
-const totalCards = 8; // 8个奖品
-const usedIndexes = ref([]); // 已抽中的索引（不可再抽）
+const remainingTimes = ref(2);
+const isRunning = ref(false);
+const currentIndex = ref(-1);
+const winIndex = ref(-1);
+let rotateTimer = null;
+const totalCards = 8;
+const usedIndexes = ref([]);
 
 const showResult = ref(false);
 const prizeList = ref([]);
 const cards = ref(true);
 
-// 8个明牌奖励
 const lotteryItems = ref([
   "奶茶一杯",
   "谢谢惠顾",
@@ -220,7 +223,6 @@ let scene, camera, renderer, controls, cakeModel;
 let particleAnimationId = null;
 let textAnimationId = null;
 
-// 祝福语
 const rawBlessings = [
   "生日快乐！天天开心！",
   "岁岁常欢愉，年年皆胜意",
@@ -231,81 +233,75 @@ const rawBlessings = [
   "日子滚烫，快乐至上",
 ];
 
-// 长段祝福
 const longBlessing =
   "虽然认识得有点草率，但这句生日快乐还是说声，愿你新的一岁，平安喜乐，万事顺意，所求皆如愿，所行皆坦途。";
 
 const blessings = ref([]);
-const typedText = ref(""); // 打字效果文字
-const showLetter = ref(false); // 是否显示书信
+const typedText = ref("");
+const showLetter = ref(false);
 
-// 生成从上到下依次排列的短句
 const generateSafeBlessings = () => {
-  blessings.value = rawBlessings.map((text, index) => {
-    return {
-      text,
-      style: {
-        top: `${10 + index * 8}%`, // 从上到下均匀排列
-        left: "50%", // 水平居中
-        transform: "translateX(-50%)", // 绝对居中
-        fontSize: "18px",
-        color: `hsl(${Math.random() * 360}, 100%, 75%)`,
-        animationDelay: `${index * 0.2}s`,
-        whiteSpace: "nowrap",
-      },
-    };
-  });
+  blessings.value = rawBlessings.map((text, index) => ({
+    text,
+    style: {
+      top: `${10 + index * 8}%`,
+      left: "50%",
+      transform: "translateX(-50%)",
+      fontSize: MOBILE_PERF ? "16px" : "18px",
+      color: `hsl(${Math.random() * 360}, 100%, 75%)`,
+      animationDelay: `${index * 0.2}s`,
+      whiteSpace: "nowrap",
+    },
+  }));
 };
 
-// 打字效果
 const startTypeWriter = () => {
   showLetter.value = true;
   let i = 0;
+  const speed = MOBILE_PERF ? 80 : 60;
   const timer = setInterval(() => {
     if (i < longBlessing.length) {
       typedText.value += longBlessing[i];
       i++;
-    } else {
-      clearInterval(timer);
-    }
-  }, 60);
+    } else clearInterval(timer);
+  }, speed);
 };
 
+// ======================================
+// 按钮逻辑（优化：切换阶段自动销毁无用canvas）
+// ======================================
 const handleClick = () => {
   if (btnText.value === "吹蜡烛") {
-    candleOut.value = true; // 触发消失动画
+    candleOut.value = true;
     cakeCanvas.value.classList.add("fade-out");
     startTextAnimation();
     btnText.value = "查看祝福";
-    if (screenfull.isEnabled) {
-      screenfull.request();
-    }
-  } else if (btnText.value === "查看祝福") {
+    if (screenfull.isEnabled) screenfull.request();
+  }
+  else if (btnText.value === "查看祝福") {
+    // 🔥 关键：销毁所有粒子/蛋糕，只保留UI，手机瞬间不卡
     stopTextAnimation();
+    destroyParticles();
+    destroyCake();
+
     showLottery.value = true;
-    cancelAnimationFrame(particleAnimationId);
     generateSafeBlessings();
     showBlessing.value = true;
-    btnText.value = ""; // 这里清空，按钮消失
+    btnText.value = "";
     startTypeWriter();
   }
 };
 
 const startLottery = () => {
-  showBlessing.value = false; // 关掉祝福语
-  showCards.value = true; // 打开抽奖卡片
+  showBlessing.value = false;
+  showCards.value = true;
 };
 
-// 开始转动抽奖
 const runLottery = () => {
   if (isRunning.value || remainingTimes.value <= 0) return;
-
-  // 过滤：只保留【未抽过】的卡片
   const availableCards = Array.from({ length: totalCards }, (_, i) => i).filter(
-    (i) => !usedIndexes.value.includes(i),
+    (i) => !usedIndexes.value.includes(i)
   );
-
-  // 没有可抽的了，直接禁用
   if (availableCards.length === 0) {
     alert("所有奖品已抽完！");
     isRunning.value = false;
@@ -315,85 +311,57 @@ const runLottery = () => {
   isRunning.value = true;
   winIndex.value = -1;
   currentIndex.value = -1;
-
-  // 速度参数
   const minSpeed = 40;
-  const maxSpeed = 320;
+  const maxSpeed = MOBILE_PERF ? 200 : 320;
   const stayTime = 1000;
-
-  const baseRound = 8;
-  const randomExtra = Math.floor(Math.random() * 12);
+  const baseRound = 6;
+  const randomExtra = Math.floor(Math.random() * 8);
   const totalSteps = baseRound * totalCards + randomExtra;
-
-  // 🔥 只从【未抽过】里随机中奖
-  const finalWinIndex =
-    availableCards[Math.floor(Math.random() * availableCards.length)];
+  const finalWinIndex = availableCards[Math.floor(Math.random() * availableCards.length)];
 
   let step = 0;
-  let rotateTimer = null;
-
   const rotate = () => {
-    // 正常转动
     currentIndex.value = (currentIndex.value + 1) % totalCards;
     step++;
-
-    // 最后一步强制停在中奖位置
-    if (step === totalSteps) {
-      currentIndex.value = finalWinIndex;
-    }
-
-    // 缓动速度
+    if (step === totalSteps) currentIndex.value = finalWinIndex;
     const progress = Math.min(step / totalSteps, 1);
-    const easeProgress = progress ** 2;
-    const curSpeed = minSpeed + (maxSpeed - minSpeed) * easeProgress;
+    const curSpeed = minSpeed + (maxSpeed - minSpeed) * (progress ** 2);
 
-    // 结束
     if (step >= totalSteps) {
       setTimeout(() => {
         winIndex.value = finalWinIndex;
-        usedIndexes.value.push(finalWinIndex); // 标记已抽
+        usedIndexes.value.push(finalWinIndex);
         prizeList.value.push(lotteryItems.value[finalWinIndex]);
         isRunning.value = false;
         remainingTimes.value -= 1;
       }, stayTime);
       return;
     }
-
     rotateTimer = setTimeout(rotate, curSpeed);
   };
 
   clearTimeout(rotateTimer);
   rotate();
 };
-// 清理定时器
-onUnmounted(() => {
-  if (rotateTimer) clearTimeout(rotateTimer);
-});
 
-// ------------------------------
-// 文字粒子（PC一行 / 手机两行 + 大字体）
-// ------------------------------
+// ======================================
+// 文字粒子动画（手机：大幅减少粒子）
+// ======================================
 const startTextAnimation = () => {
   const canvas = textCanvas.value;
   if (!canvas) return;
   const ctx = canvas.getContext("2d");
-
   const FIX_W = 1000;
   const FIX_H = 600;
   canvas.width = FIX_W;
   canvas.height = FIX_H;
 
-  // 判断是否为移动端
-  const isMobile = window.innerWidth < 768;
   let text, BASE_WIDTH, BASE_HEIGHT;
-
   if (isMobile) {
-    // 移动端：两行大字
     text = ["孙文纹", "生日快乐"];
     BASE_WIDTH = 600;
     BASE_HEIGHT = 240;
   } else {
-    // PC端：一行
     text = "孙文纹  生日快乐";
     BASE_WIDTH = 600;
     BASE_HEIGHT = 150;
@@ -407,15 +375,13 @@ const startTextAnimation = () => {
   tempCtx.fillStyle = "#fff";
 
   if (isMobile) {
-    // 移动端字体更大（两行）
-    tempCtx.font = "bold 100px Microsoft YaHei, sans-serif";
+    tempCtx.font = "bold 100px Microsoft YaHei";
     tempCtx.textAlign = "center";
     tempCtx.textBaseline = "middle";
     tempCtx.fillText(text[0], BASE_WIDTH / 2, BASE_HEIGHT / 2 - 60);
     tempCtx.fillText(text[1], BASE_WIDTH / 2, BASE_HEIGHT / 2 + 60);
   } else {
-    // PC端字体
-    tempCtx.font = "bold 70px Microsoft YaHei, sans-serif";
+    tempCtx.font = "bold 70px Microsoft YaHei";
     tempCtx.textAlign = "center";
     tempCtx.textBaseline = "middle";
     tempCtx.fillText(text, BASE_WIDTH / 2, BASE_HEIGHT / 2 - 20);
@@ -424,9 +390,11 @@ const startTextAnimation = () => {
   const imageData = tempCtx.getImageData(0, 0, BASE_WIDTH, BASE_HEIGHT);
   const data = imageData.data;
 
-  // 粒子采样
-  for (let y = 0; y < BASE_HEIGHT; y += 3) {
-    for (let x = 0; x < BASE_WIDTH; x += 3) {
+  // 🔥 手机：采样间隔变大，粒子数量减少60%
+  const step = MOBILE_PERF ? 5 : 3;
+
+  for (let y = 0; y < BASE_HEIGHT; y += step) {
+    for (let x = 0; x < BASE_WIDTH; x += step) {
       const idx = (y * BASE_WIDTH + x) * 4;
       if (data[idx + 3] > 128) {
         particles.push({
@@ -467,17 +435,17 @@ const getGradientColor = (rate) => {
 };
 
 const stopTextAnimation = () => {
-  if (textAnimationId) {
-    cancelAnimationFrame(textAnimationId);
-    textAnimationId = null;
+  if (textAnimationId) cancelAnimationFrame(textAnimationId);
+  textAnimationId = null;
+  if (textCanvas.value) {
+    const ctx = textCanvas.value.getContext("2d");
+    ctx?.clearRect(0, 0, textCanvas.value.width, textCanvas.value.height);
   }
-  const ctx = textCanvas.value?.getContext("2d");
-  if (ctx) ctx.clearRect(0, 0, textCanvas.value.width, textCanvas.value.height);
 };
 
-// ------------------------------
-// 礼花
-// ------------------------------
+// ======================================
+// 礼花粒子（手机：减少爆炸数量）
+// ======================================
 const initParticles = () => {
   const canvas = particleCanvas.value;
   if (!canvas) return;
@@ -492,33 +460,18 @@ const initParticles = () => {
 
   const rockets = [];
   const explosions = [];
-  const colors = [
-    "#ff3d3d",
-    "#ff9c3d",
-    "#ffe03d",
-    "#3dff83",
-    "#3db9ff",
-    "#9c3dff",
-    "#ff3de8",
-    "#ffffff",
-    "#ff5e88",
-    "#ffdf00",
-    "#7fff3d",
-  ];
+  const colors = ["#ff3d3d","#ff9c3d","#ffe03d","#3dff83","#3db9ff","#9c3dff","#ff3de8","#ffffff","#ff5e88","#ffdf00","#7fff3d"];
 
   class Rocket {
     constructor() {
       this.x = Math.random() * canvas.width;
       this.y = canvas.height;
       this.speed = Math.random() * 2 + 2;
-      this.targetY =
-        Math.random() * (canvas.height * 0.4) + canvas.height * 0.3;
+      this.targetY = Math.random() * (canvas.height * 0.4) + canvas.height * 0.3;
       this.color = colors[Math.floor(Math.random() * colors.length)];
       this.size = 3;
     }
-    update() {
-      this.y -= this.speed;
-    }
+    update() { this.y -= this.speed; }
     draw() {
       ctx.beginPath();
       ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
@@ -530,18 +483,16 @@ const initParticles = () => {
 
   class Particle {
     constructor(x, y, color) {
-      this.x = x;
-      this.y = y;
-      this.vx = (Math.random() - 0.5) * 5;
-      this.vy = (Math.random() - 0.5) * 5;
+      this.x = x; this.y = y;
+      this.vx = (Math.random() - 0.5) * 4.5;
+      this.vy = (Math.random() - 0.5) * 4.5;
       this.color = color;
       this.alpha = 1;
-      this.decay = 0.003;
-      this.gravity = 0.01;
+      this.decay = 0.004;
+      this.gravity = 0.012;
     }
     update() {
-      this.x += this.vx;
-      this.y += this.vy;
+      this.x += this.vx; this.y += this.vy;
       this.vy += this.gravity;
       this.alpha -= this.decay;
     }
@@ -549,30 +500,30 @@ const initParticles = () => {
       ctx.globalAlpha = Math.max(this.alpha, 0);
       ctx.fillStyle = this.color;
       ctx.beginPath();
-      ctx.arc(this.x, this.y, 2.5, 0, Math.PI * 2);
+      ctx.arc(this.x, this.y, 2.2, 0, Math.PI * 2);
       ctx.fill();
     }
   }
 
   let lastLaunch = 0;
   const animate = () => {
-    ctx.fillStyle = "rgba(0,0,0,0.1)";
+    ctx.fillStyle = "rgba(0,0,0,0.15)";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.globalAlpha = 1;
 
     const now = Date.now();
-    if (now - lastLaunch > 2500 + Math.random() * 1000) {
+    if (now - lastLaunch > (MOBILE_PERF ? 3500 : 2500) + Math.random() * 1000) {
       rockets.push(new Rocket());
       lastLaunch = now;
     }
 
     for (let i = rockets.length - 1; i >= 0; i--) {
       const r = rockets[i];
-      r.update();
-      r.draw();
+      r.update(); r.draw();
       if (r.y <= r.targetY) {
-        for (let j = 0; j < 80; j++)
-          explosions.push(new Particle(r.x, r.y, r.color));
+        // 🔥 手机：爆炸粒子减半
+        const count = MOBILE_PERF ? 40 : 80;
+        for (let j = 0; j < count; j++) explosions.push(new Particle(r.x, r.y, r.color));
         rockets.splice(i, 1);
       }
     }
@@ -580,10 +531,7 @@ const initParticles = () => {
     for (let i = explosions.length - 1; i >= 0; i--) {
       const p = explosions[i];
       p.update();
-      if (p.alpha <= 0.01) {
-        explosions.splice(i, 1);
-        continue;
-      }
+      if (p.alpha <= 0.01) { explosions.splice(i, 1); continue; }
       p.draw();
     }
     particleAnimationId = requestAnimationFrame(animate);
@@ -591,28 +539,50 @@ const initParticles = () => {
   animate();
 };
 
-// ------------------------------
-// 蛋糕
-// ------------------------------
+// ======================================
+// 销毁礼花（关键！）
+// ======================================
+const destroyParticles = () => {
+  if (particleAnimationId) cancelAnimationFrame(particleAnimationId);
+  if (particleCanvas.value) {
+    const ctx = particleCanvas.value.getContext("2d");
+    ctx.clearRect(0, 0, particleCanvas.value.width, particleCanvas.value.height);
+  }
+};
+
+// ======================================
+// 销毁蛋糕Three.js（关键！）
+// ======================================
+const destroyCake = () => {
+  if (!renderer) return;
+  renderer.dispose();
+  if (cakeCanvas.value) cakeCanvas.value.remove();
+  renderer = null;
+  scene = null;
+  camera = null;
+  controls = null;
+};
+
+// ======================================
+// 蛋糕初始化（手机：极致性能模式）
+// ======================================
 onMounted(() => {
   if (!cakeCanvas.value) return;
-
-  // 移动端检测
-  const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
   scene = new THREE.Scene();
   camera = new THREE.PerspectiveCamera(45, 1, 0.1, 1000);
   camera.position.set(1.5, 1.5, 4);
 
-  // 移动端优化渲染，防止崩溃/不显示
+  // 🔥 手机：关闭抗锯齿 + 低像素比 + 高性能
   renderer = new THREE.WebGLRenderer({
     canvas: cakeCanvas.value,
-    antialias: false,
+    antialias: !MOBILE_PERF,
     alpha: true,
     powerPreference: "high-performance",
   });
+
   renderer.setSize(400, 400);
-  renderer.setPixelRatio(isMobile ? 1 : Math.min(window.devicePixelRatio, 1.2));
+  renderer.setPixelRatio(MOBILE_PERF ? 1 : Math.min(window.devicePixelRatio, 1.2));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
 
   const ambientLight = new THREE.AmbientLight(0xffffff, 1.8);
@@ -626,22 +596,20 @@ onMounted(() => {
 
   controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
-  controls.dampingFactor = 0.05;
+  controls.dampingFactor = 0.08;
   controls.minDistance = 2;
   controls.maxDistance = 6;
   controls.enablePan = false;
 
-  // ------------- 修复 DRACO + GitHub Pages 路径 -------------
   const dracoLoader = new DRACOLoader();
   dracoLoader.setDecoderPath("/wen/draco/");
   const loader = new GLTFLoader();
   loader.setDRACOLoader(dracoLoader);
 
   loader.load(
-    "cake.glb", // 👈 绝对关键！必须去掉 / ！！！
+    "cake.glb",
     (gltf) => {
       cakeModel = gltf.scene;
-
       cakeModel.traverse((child) => {
         if (child.isMesh && child.material) {
           child.material.needsUpdate = true;
@@ -650,17 +618,14 @@ onMounted(() => {
           child.material.metalness = 0.1;
         }
       });
-
       const box = new THREE.Box3().setFromObject(cakeModel);
       const center = box.getCenter(new THREE.Vector3());
       const size = box.getSize(new THREE.Vector3());
       const maxDim = Math.max(size.x, size.y, size.z);
       const scale = 3 / maxDim;
-
       const pivot = new THREE.Group();
       scene.add(pivot);
       pivot.add(cakeModel);
-
       cakeModel.scale.setScalar(scale);
       cakeModel.position.sub(center);
       cakeModel.position.x = 0.23;
@@ -675,34 +640,31 @@ onMounted(() => {
       const mat = new THREE.MeshStandardMaterial({ color: 0xff99cc });
       const fallback = new THREE.Mesh(geo, mat);
       fallback.position.y = -0.5;
-
       const pivot = new THREE.Group();
       scene.add(pivot);
       pivot.add(fallback);
       cakeModel = pivot;
-    },
+    }
   );
 
-  // 手机防黑屏：延迟启动渲染
-  setTimeout(
-    () => {
-      const animate = () => {
-        requestAnimationFrame(animate);
-        if (cakeModel) cakeModel.rotation.y += 0.001;
-        controls.update();
-        renderer.render(scene, camera);
-      };
-      animate();
-    },
-    isMobile ? 300 : 0,
-  );
+  // 手机延迟渲染，避免黑屏
+  setTimeout(() => {
+    const animate = () => {
+      const id = requestAnimationFrame(animate);
+      if (!renderer) { cancelAnimationFrame(id); return; }
+      if (cakeModel) cakeModel.rotation.y += 0.003;
+      controls.update();
+      renderer.render(scene, camera);
+    };
+    animate();
+  }, MOBILE_PERF ? 400 : 0);
 
   initParticles();
 });
 
 onUnmounted(() => {
-  if (renderer) renderer.dispose();
-  if (particleAnimationId) cancelAnimationFrame(particleAnimationId);
+  destroyCake();
+  destroyParticles();
   stopTextAnimation();
   if (rotateTimer) clearTimeout(rotateTimer);
 });
