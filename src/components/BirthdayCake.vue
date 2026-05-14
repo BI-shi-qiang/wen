@@ -1,5 +1,4 @@
 <template>
-  <!-- 🔥 全局加载遮罩 + 进度条 -->
   <div class="loading-overlay" v-if="isLoading">
     <div class="loading-box">
       <div class="loading-text">🎂 蛋糕准备中...</div>
@@ -182,11 +181,8 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
 import screenfull from "screenfull";
 
-// ======================================
-// 🔥 移动端全局开关：自动优化性能
-// ======================================
 const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-const MOBILE_PERF = isMobile; // 手机自动开性能模式
+const MOBILE_PERF = isMobile;
 
 const candleOut = ref(false);
 const btnText = ref("吹蜡烛");
@@ -206,16 +202,16 @@ const showResult = ref(false);
 const prizeList = ref([]);
 const cards = ref(true);
 
-const isLoading = ref(true); // 🔥 控制加载遮罩
-const loadProgress = ref(0); // 🔥 进度条百分比
+const isLoading = ref(true);
+const loadProgress = ref(0);
 
 const lotteryItems = ref([
-  "奶茶一杯",
+  "三两小面加个蛋",
   "谢谢惠顾",
-  "三好学生 奖状一张",
+  "不锈钢脚盆一个",
   "肥皂一块",
   "酱油一瓶",
-  "岁数红包一个",
+  "旺旺雪饼一包",
   "金佛山门票一张",
   "洗衣粉一包",
 ]);
@@ -228,17 +224,17 @@ let particleAnimationId = null;
 let textAnimationId = null;
 
 const rawBlessings = [
-  "生日快乐！天天开心！",
+  "生日快乐！事事顺心",
   "岁岁常欢愉，年年皆胜意",
   "平安喜乐，万事顺遂",
   "新的一岁，闪闪发光",
   "永远被空气包围",
   "把把儿都吃鸡",
-  "日子滚烫，快乐至上",
+  "日子滚烫，快乐至上！",
 ];
 
 const longBlessing =
-  "虽然认识得有点草率，但这句生日快乐还是说声，愿你新的一岁，平安喜乐，万事顺意，所求皆如愿，所行皆坦途。";
+  "To 孙文纹：生日快乐，新的一岁，平安喜乐，万事顺意，所求皆如愿，所行皆坦途~";
 
 const blessings = ref([]);
 const typedText = ref("");
@@ -278,16 +274,14 @@ const handleClick = () => {
   if (btnText.value === "吹蜡烛") {
     candleOut.value = true;
     cakeCanvas.value.classList.add("fade-out");
+    destroyParticles();
     startTextAnimation();
     btnText.value = "查看祝福";
     if (screenfull.isEnabled) screenfull.request();
   }
   else if (btnText.value === "查看祝福") {
-    // 🔥 关键：销毁所有粒子/蛋糕，只保留UI，手机瞬间不卡
     stopTextAnimation();
-    destroyParticles();
     destroyCake();
-
     showLottery.value = true;
     generateSafeBlessings();
     showBlessing.value = true;
@@ -363,12 +357,12 @@ const startTextAnimation = () => {
   let text, BASE_WIDTH, BASE_HEIGHT;
   if (isMobile) {
     text = ["孙文纹", "生日快乐"];
-    BASE_WIDTH = 600;
-    BASE_HEIGHT = 240;
+    BASE_WIDTH = 720;
+    BASE_HEIGHT = 380;
   } else {
     text = "孙文纹  生日快乐";
-    BASE_WIDTH = 600;
-    BASE_HEIGHT = 150;
+    BASE_WIDTH = 920;
+    BASE_HEIGHT = 160;
   }
 
   const particles = [];
@@ -379,13 +373,13 @@ const startTextAnimation = () => {
   tempCtx.fillStyle = "#fff";
 
   if (isMobile) {
-    tempCtx.font = "bold 100px Microsoft YaHei";
+    tempCtx.font = "bold 160px Microsoft YaHei";
     tempCtx.textAlign = "center";
     tempCtx.textBaseline = "middle";
-    tempCtx.fillText(text[0], BASE_WIDTH / 2, BASE_HEIGHT / 2 - 60);
-    tempCtx.fillText(text[1], BASE_WIDTH / 2, BASE_HEIGHT / 2 + 60);
+    tempCtx.fillText(text[0], BASE_WIDTH / 2, BASE_HEIGHT / 2 - 100);
+    tempCtx.fillText(text[1], BASE_WIDTH / 2, BASE_HEIGHT / 2 + 100);
   } else {
-    tempCtx.font = "bold 70px Microsoft YaHei";
+    tempCtx.font = "bold 90px Microsoft YaHei";
     tempCtx.textAlign = "center";
     tempCtx.textBaseline = "middle";
     tempCtx.fillText(text, BASE_WIDTH / 2, BASE_HEIGHT / 2 - 20);
@@ -394,8 +388,9 @@ const startTextAnimation = () => {
   const imageData = tempCtx.getImageData(0, 0, BASE_WIDTH, BASE_HEIGHT);
   const data = imageData.data;
 
-  // 🔥 手机：采样间隔变大，粒子数量减少60%
-  const step = MOBILE_PERF ? 5 : 3;
+  // ========== 2. 粒子更多更密 + 粒子保持细小 ==========
+  const step = MOBILE_PERF ? 3 : 2;
+  const particleSize = MOBILE_PERF ? 0.6 : 0.7;
 
   for (let y = 0; y < BASE_HEIGHT; y += step) {
     for (let x = 0; x < BASE_WIDTH; x += step) {
@@ -407,18 +402,24 @@ const startTextAnimation = () => {
           tx: (FIX_W - BASE_WIDTH) / 2 + x,
           ty: (FIX_H - BASE_HEIGHT) / 2 + y,
           xRate: x / BASE_WIDTH,
-          size: Math.random() * 0.8 + 1.0,
+          size: particleSize,
           speed: Math.random() * 2 + 1.8,
+          originTy: (FIX_H - BASE_HEIGHT) / 2 + y,
+          phase: Math.random() * Math.PI * 2
         });
       }
     }
   }
-
   const animate = () => {
     ctx.clearRect(0, 0, FIX_W, FIX_H);
+    const time = Date.now() * 0.0012;
+
     particles.forEach((p) => {
+      // 爆炸聚拢成型
       p.x += (p.tx - p.x) / p.speed;
       p.y += (p.ty - p.y) / p.speed;
+      // 成型后上下呼吸浮动
+      p.ty = p.originTy + Math.sin(time + p.phase) * 4;
       ctx.beginPath();
       ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
       ctx.fillStyle = getGradientColor(p.xRate);
@@ -548,6 +549,7 @@ const initParticles = () => {
 // ======================================
 const destroyParticles = () => {
   if (particleAnimationId) cancelAnimationFrame(particleAnimationId);
+  particleAnimationId = null;
   if (particleCanvas.value) {
     const ctx = particleCanvas.value.getContext("2d");
     ctx.clearRect(0, 0, particleCanvas.value.width, particleCanvas.value.height);
@@ -605,7 +607,7 @@ onMounted(() => {
   controls.enablePan = false;
 
   const dracoLoader = new DRACOLoader();
-  dracoLoader.setDecoderPath("/wen/draco/");
+  dracoLoader.setDecoderPath("/draco/");
   const loader = new GLTFLoader();
   loader.setDRACOLoader(dracoLoader);
 
