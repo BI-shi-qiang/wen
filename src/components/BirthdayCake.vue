@@ -1,6 +1,16 @@
 <template>
+  <!-- 🔥 全局加载遮罩 + 进度条 -->
+  <div class="loading-overlay" v-if="isLoading">
+    <div class="loading-box">
+      <div class="loading-text">🎂 蛋糕准备中...</div>
+      <div class="progress-bar">
+        <div class="progress" :style="{ width: loadProgress + '%' }"></div>
+      </div>
+      <div class="progress-num">{{ loadProgress }}%</div>
+    </div>
+  </div>
+
   <div class="birthday-container">
-    <!-- 给蛋糕容器加渐变消失类 -->
     <div
       class="cake-wrapper"
       v-if="!showLottery"
@@ -16,7 +26,6 @@
     </button>
 
     <div class="blessing-box" v-if="showBlessing">
-      <!-- 顶部短句 依次掉落 -->
       <div
         class="blessing-item"
         v-for="(item, index) in blessings"
@@ -25,8 +34,6 @@
       >
         {{ item.text }}
       </div>
-
-      <!-- 底部书信 + 打字效果 -->
       <div class="letter-box" v-if="showLetter">
         <div class="letter-content">
           {{ typedText }}
@@ -44,10 +51,7 @@
       </button>
 
       <div class="lottery-wrap" v-if="showCards">
-        <!-- 剩余次数 -->
         <div class="lottery-count">剩余抽奖次数：{{ remainingTimes }}</div>
-
-        <!-- 8个明牌卡牌 整齐方形布局 -->
         <div class="card-list" v-if="cards">
           <div
             class="card"
@@ -131,7 +135,6 @@
           </div>
         </div>
 
-        <!-- 最终中奖结果展示 方便截图 -->
         <div class="final-result" v-if="showResult">
           <div class="result-card">
             <div class="result-title">🎉 好事成双 🎉</div>
@@ -141,7 +144,6 @@
           </div>
         </div>
 
-        <!-- 中间开始按钮 -->
         <button
           class="start-btn"
           v-if="!showResult"
@@ -157,7 +159,6 @@
           }}
         </button>
 
-        <!-- 两次抽完：展示奖励按钮 -->
         <button
           class="start-btn"
           v-if="remainingTimes <= 0 && !showResult"
@@ -204,6 +205,9 @@ const usedIndexes = ref([]);
 const showResult = ref(false);
 const prizeList = ref([]);
 const cards = ref(true);
+
+const isLoading = ref(true); // 🔥 控制加载遮罩
+const loadProgress = ref(0); // 🔥 进度条百分比
 
 const lotteryItems = ref([
   "奶茶一杯",
@@ -573,7 +577,6 @@ onMounted(() => {
   camera = new THREE.PerspectiveCamera(45, 1, 0.1, 1000);
   camera.position.set(1.5, 1.5, 4);
 
-  // 🔥 手机：关闭抗锯齿 + 低像素比 + 高性能
   renderer = new THREE.WebGLRenderer({
     canvas: cakeCanvas.value,
     antialias: !MOBILE_PERF,
@@ -607,8 +610,11 @@ onMounted(() => {
   loader.setDRACOLoader(dracoLoader);
 
   loader.load(
-    "cake.glb",
+    "./cake.glb",
     (gltf) => {
+      isLoading.value = false;
+      loadProgress.value = 100;
+
       cakeModel = gltf.scene;
       cakeModel.traverse((child) => {
         if (child.isMesh && child.material) {
@@ -633,9 +639,17 @@ onMounted(() => {
       cakeModel.position.z = 0;
       cakeModel = pivot;
     },
-    (progress) => {},
+    // ==============================================
+    // 🔥 加载进度（实时更新）
+    // ==============================================
+    (progress) => {
+      const percent = (progress.loaded / progress.total) * 100;
+      loadProgress.value = Math.round(percent);
+    },
     (err) => {
       console.error("模型加载失败，自动创建备用蛋糕", err);
+      isLoading.value = false;
+
       const geo = new THREE.CylinderGeometry(0.8, 0.8, 1.2, 16);
       const mat = new THREE.MeshStandardMaterial({ color: 0xff99cc });
       const fallback = new THREE.Mesh(geo, mat);
@@ -647,7 +661,6 @@ onMounted(() => {
     }
   );
 
-  // 手机延迟渲染，避免黑屏
   setTimeout(() => {
     const animate = () => {
       const id = requestAnimationFrame(animate);
@@ -1047,5 +1060,53 @@ onUnmounted(() => {
   opacity: 0.15 !important;
   filter: grayscale(100%);
   pointer-events: none;
+}
+
+/* ==============================================
+   🔥 加载进度条样式
+============================================== */
+.loading-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: #000;
+  z-index: 99999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.loading-box {
+  width: 80%;
+  max-width: 400px;
+  text-align: center;
+}
+.loading-text {
+  font-size: 18px;
+  color: #ffccff;
+  margin-bottom: 12px;
+  font-weight: bold;
+  text-shadow: 0 0 10px #ff99cc;
+}
+.progress-bar {
+  width: 100%;
+  height: 10px;
+  background: #222;
+  border-radius: 20px;
+  overflow: hidden;
+  border: 1px solid #ff99cc;
+}
+.progress {
+  height: 100%;
+  background: linear-gradient(90deg, #ff99cc, #ff6699);
+  transition: width 0.3s ease;
+  border-radius: 20px;
+}
+.progress-num {
+  margin-top: 8px;
+  color: #fff;
+  font-size: 16px;
+  font-weight: bold;
 }
 </style>
