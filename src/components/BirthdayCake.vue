@@ -607,7 +607,7 @@ onMounted(() => {
   controls.enablePan = false;
 
   const dracoLoader = new DRACOLoader();
-  dracoLoader.setDecoderPath("/draco/");
+  dracoLoader.setDecoderPath("/wen/draco/");
   const loader = new GLTFLoader();
   loader.setDRACOLoader(dracoLoader);
 
